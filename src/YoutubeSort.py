@@ -8,11 +8,11 @@ except:
     
 
 def EscolhaUsuario():
-    option=int(input("opcoes:\n1-pegar musicas curtidas\n2-id de playlist especifica "))
+    option=int(input("From which playlist. Options:\n1-From liked songs\n2-playlist ID\nChoice: "))
     if option == 1:
         playlist=YTMusic.get_liked_songs(ytmusic,None)
     elif option == 2:
-        toSortId=input ("Id da playlist para organizar: ")
+        toSortId=input ("Paste the playlist ID: ")
         playlist=YTMusic.get_playlist(ytmusic,toSortId,None)
     else:
         print("fez merda")
@@ -22,7 +22,7 @@ def EscolhaUsuario():
 def organizaPlaylist():
     playlist=EscolhaUsuario()
     sortedTracks=sorted(playlist["tracks"],key=lambda d: d['title'])
-    playlistId = ytmusic.create_playlist(playlist['title']+"-A/Z",playlist['title']+" organizada alfabeticamente")
+    playlistId = ytmusic.create_playlist(playlist['title']+"-A/Z",playlist['title']+" Organized alphabetically")
     filtered = list((d['videoId']) for d in sortedTracks)
     filteredIds=list(dict.fromkeys(filtered))
     #aa=ytmusic.add_playlist_items(playlistId,filteredIds,duplicates=True)
@@ -40,10 +40,10 @@ def likeMusicas():
 
 
 if True:
-    a=int(input("quer organizar uma playlist(1) ou dar like nas musicas(2)"))
+    a=int(input("organize a playlist alphabetically(1) or like all the musics in a playlist(2): "))
     if a == 1:
         organizaPlaylist()
-        print("feito")
+        print("done")
     else:
         likeMusicas()
-        print("likeado")
+        print("liked")
