@@ -4,7 +4,7 @@ path = os.path.dirname(os.path.realpath(__file__)) + os.sep
 try:
     ytmusic = YTMusic(path+"oauth.json")
 except:
-    print('no oauth.json, run ytmusicapi oauth to create it')
+    print('no oauth.json, run "ytmusicapi oauth" in CMD to create it')
     
 
 def EscolhaUsuario():
@@ -40,7 +40,7 @@ def likeMusicas():
 
 
 if True:
-    a=int(input("organize a playlist alphabetically(1) or like all the musics in a playlist(2): "))
+    a=int(input("sort playlist alphabetically(1) or like all the musics in a playlist(2): "))
     if a == 1:
         organizaPlaylist()
         print("done")
