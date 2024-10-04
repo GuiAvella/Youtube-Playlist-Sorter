@@ -22,11 +22,12 @@ def EscolhaUsuario():
 def organizaPlaylist():
     playlist=EscolhaUsuario()
     sortedTracks=sorted(playlist["tracks"],key=lambda d: d['title'])
-    playlistId = ytmusic.create_playlist(playlist['title']+"-A/Z",playlist['title']+" Organized alphabetically")
+    
     filtered = list((d['videoId']) for d in sortedTracks)
     filteredIds=list(dict.fromkeys(filtered))
-    #aa=ytmusic.add_playlist_items(playlistId,filteredIds,duplicates=True)
-    aa=ytmusic.add_playlist_items(playlistId,filteredIds)
+    playlistId = ytmusic.create_playlist(playlist['title']+"-A/Z",playlist['title']+" Organized alphabetically",video_ids=filteredIds)
+    new_playlist=YTMusic.get_playlist(ytmusic,playlistId,None)
+
 
 def likeMusicas():
     playlist=EscolhaUsuario()
