@@ -28,6 +28,29 @@ def organizaPlaylist():
     playlistId = ytmusic.create_playlist(playlist['title']+"-A/Z",playlist['title']+" Organized alphabetically",video_ids=filteredIds)
     new_playlist=YTMusic.get_playlist(ytmusic,playlistId,None)
 
+def showUnliked():
+    playlist=EscolhaUsuario()
+    sortedTracks=sorted(playlist["tracks"],key=lambda d: d['title'])
+    filteredNames=list((d['title']) for d in sortedTracks if d['likeStatus']!='LIKE')
+    for name in filteredNames:
+        print(name)
+
+def addSongName():
+    musicas = []
+    nome_musica=[]
+    while True:
+        user = input('Name of song or STOP# to stop: ')
+        if user.upper() == "STOP#":
+            break
+        else:
+            nome_musica.append(user)
+    for name in nome_musica:
+        a = YTMusic.search(ytmusic,name, 'songs',limit= 1)
+        musicas.append(a[0])
+    sortedTracks=sorted(musicas,key=lambda d: d['title'])
+    filtered = list((d['videoId']) for d in sortedTracks)
+    filteredIds=list(dict.fromkeys(filtered))
+    playlistId = ytmusic.create_playlist("added songs","added songs organized alphabetically",video_ids=filteredIds)
 
 def likeMusicas():
     playlist=EscolhaUsuario()
@@ -38,13 +61,32 @@ def likeMusicas():
     for id in filteredIds:
         a=YTMusic.rate_song(ytmusic,id,'LIKE')
   
+def removeClones():
+    remove=[]
+    playlist=EscolhaUsuario()
+    sortedTracks=sorted(playlist["tracks"],key=lambda d: d['title'])
+    for index , name in enumerate(sortedTracks):
+        if index > 0:
+            if name['videoId'] == name_old:
+                remove.append(name)
+        name_old = name['videoId']
+    YTMusic.remove_playlist_items(ytmusic,playlist['id'],remove)
 
-
-if True:
-    a=int(input("sort playlist alphabetically(1) or like all the musics in a playlist(2): "))
-    if a == 1:
+while True:
+    a=(input("OPTIONS:\nsort playlist alphabetically(1)\nlike all the musics in a playlist(2)\nRemove clones(3)\nShow unliked(4)\nAdd songs by name(5)\nOr #QUIT to quit\nChoice: "))
+    if a == '1':
         organizaPlaylist()
         print("done")
-    else:
+    elif a == '2':
         likeMusicas()
         print("liked")
+    elif a == '3':
+        removeClones()
+        print("done")
+    elif a == '4':
+        showUnliked()
+    elif a == '5':
+        addSongName()
+    elif a == "#QUIT":
+        break
+        
