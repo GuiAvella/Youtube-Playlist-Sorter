@@ -1,1 +1,4 @@
 ytmusicapi
+undetected-chromedriver
+setuptools
+selenium
