@@ -3,13 +3,14 @@ import os
 from functools import partial
 import json
 import subprocess
+import gzip
 import time
 import requests
 from ytmusicapi import YTMusic, OAuthCredentials, setup
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import undetected_chromedriver as uc
 
-subprocess.check_call(["python", '-m', 'pip', 'install', '--upgrade', 'package_name'])
+
 CookiesWant = ["SOCS", "VISITOR_PRIVACY_METADATA", "VISITOR_INFO1_LIVE", "PREF", "VISITOR_INFO1_LIVE",
                "__Secure-ROLLOUT_TOKEN", "__Secure-1PSIDTS", "__Secure-3PSIDTS", "HSID", "SSID", "APISID",
                "SAPISID", "__Secure-1PAPISID", "__Secure-3PAPISID", "SID", "__Secure-1PSID", "__Secure-3PSID",
@@ -47,8 +48,11 @@ DirConfig = os.path.join(BASE_DIR, "Config.json")
 s = requests.Session()
 s.request = partial(s.request, timeout=600)
 
+IgnoreWords = ("the ", "an ", "a ")
+
 def check_and_update_package(package_name):
     try:
+        subprocess.check_call(["python", '-m', 'pip', 'install', '--upgrade', 'package_name'])
         # Check for outdated packages
         result = subprocess.run(
             ["python", "-m", "pip", "list", "--outdated"],
@@ -103,6 +107,9 @@ def GetCookies():
                 url = tempMessage.get("url", "")
                 if "https://music.youtube.com/youtubei/v1/browse?prettyPrint=false" in url:
                     headers = tempMessage.get("headers", {})
+                    request_body = headers["log"]["entries"][0]["request"]["postData"]["text"]
+                    raw = request_body.encode("latin1")
+                    headers = gzip.decompress(raw)
                     break
         except Exception:
             continue
@@ -144,7 +151,7 @@ def GetCookies():
 
 def SortPlaylist(playlist):
     sortedTracks = sorted(playlist["tracks"],
-                          key=lambda d: d['title'].casefold())
+                          key=lambda d: d['title'].casefold(),)
     return sortedTracks
 
 
@@ -180,12 +187,18 @@ def EscolhaUsuario():
 def organizaPlaylist():
     playlist = EscolhaUsuario()
     for n, track in enumerate(playlist["tracks"]):
+        TrackLowered = str(track["title"][0]).lower()
         if ord(track["title"][0]) < 65 or ord(track["title"][0]) > 122:
             novo = str("")
             for Letra in track["title"]:
                 novo = novo + str(CharacterTransform(Letra))
             track["title"] = novo
+        elif TrackLowered.startswith(IgnoreWords):
+            SpliceLocation = TrackLowered.find(" ")
+            novo = track[SpliceLocation+1::]
+            track["title"] = novo
         playlist["tracks"][n] = track
+            
     sortedTracks = SortPlaylist(playlist)
 
     filtered = list((d['videoId']) for d in sortedTracks)
@@ -335,29 +348,34 @@ else:
 
 
 if __name__ == "__main__":
-    if sys.argv[0].endswith(".py"):
-        sys.argv.pop(0)
+    try:
+        if sys.argv[0].endswith(".py"):
+            sys.argv.pop(0)
 
-    if sys.argv == []:
-        a = (input("OPTIONS:\nsort playlist alphabetically(1)\nlike all the musics in a playlist(2)\nRemove clones(3)\nShow unliked(4)\nAdd songs by name(5)" \
-        "\nUpdade Package(6)\nChoice: "))
-    else:
-        a = sys.argv[0]
+        if sys.argv == []:
+            a = (input("OPTIONS:\nsort playlist alphabetically(1)\nlike all the musics in a playlist(2)\nRemove clones(3)\nShow unliked(4)\nAdd songs by name(5)" \
+            "\nUpdade Package(6)\nChoice: "))
+        else:
+            a = sys.argv[0]
 
-    match a:
-        case '1':
-            print("Organizing Playlist")
-            organizaPlaylist()
-        case '2':
-            print("Liking Songs")
-            likeMusicas()
-        case '3':
-            print("Removing Clones")
-            removeClones()
-        case '4':
-            showUnliked()
-        case '5':
-            addSongName()
-        case '6':
-            check_and_update_package("ytmusicapi")
-    print("done")
+        match a:
+            case '1':
+                print("Organizing Playlist")
+                organizaPlaylist()
+            case '2':
+                print("Liking Songs")
+                likeMusicas()
+            case '3':
+                print("Removing Clones")
+                removeClones()
+            case '4':
+                showUnliked()
+            case '5':
+                addSongName()
+            case '6':
+                check_and_update_package("ytmusicapi")
+        print("done")
+    except Exception.with_traceback(Exception) as e:
+        print(e)
+        input("program Crashed, Press enter to exit")
+        
