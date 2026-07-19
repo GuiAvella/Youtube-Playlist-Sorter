@@ -2,3 +2,6 @@ ytmusicapi
 undetected-chromedriver
 setuptools
 selenium
+SpotiFLAC
+python-dotenv
+tqdm

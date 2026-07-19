@@ -1,15 +1,21 @@
 import sys
 import os
+from pathlib import Path
 from functools import partial
 import json
 import subprocess
 import gzip
 import time
+from tkinter import ALL, W
+from pydantic import FilePath
 import requests
 from ytmusicapi import YTMusic, OAuthCredentials, setup
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import undetected_chromedriver as uc
+import dotenv
+from tqdm import tqdm
 
+_Searches_ = 3
 
 CookiesWant = ["SOCS", "VISITOR_PRIVACY_METADATA", "VISITOR_INFO1_LIVE", "PREF", "VISITOR_INFO1_LIVE",
                "__Secure-ROLLOUT_TOKEN", "__Secure-1PSIDTS", "__Secure-3PSIDTS", "HSID", "SSID", "APISID",
@@ -41,14 +47,53 @@ JsonBrowser = {
 }
 
 Ouath = False
-BASE_DIR = os.path.join(os.getenv('LOCALAPPDATA'), "Youtube_playlist_Sorter")
+
+def get_documents_folder() -> Path:
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
+        return Path(winreg.QueryValueEx(key, "Personal")[0])
+    except ImportError:
+        return Path.home() / "Documents"
+    
+def AddEnvVar(path,key):
+    print(f"the key {key} is missing from the .env")
+    value = input("Input key value: ")
+    dotenv.set_key(path,key,value)
+    dotenv.load_dotenv(os.path.join(Path(PathBase).parent, "YoutubeSorter.env"))
+    var = os.getenv(key)
+    return var
+
+documents = get_documents_folder()
+
+#BASE_DIR = os.path.join(os.getenv('LOCALAPPDATA'), "Youtube_playlist_Sorter")
+BASE_DIR = os.path.join(documents, "Youtube_playlist_Sorter")
 PathBase = os.path.dirname(os.path.realpath(__file__)) + os.sep
-DirConfig = os.path.join(BASE_DIR, "Config.json")
+CACHE_FILE = os.path.join(BASE_DIR,"genre_cache.json")
 
 s = requests.Session()
 s.request = partial(s.request, timeout=600)
 
 IgnoreWords = ("the ", "an ", "a ")
+
+def loadVars():
+    path = os.path.join(Path(PathBase).parent, "YoutubeSorter.env")
+    dotenv.load_dotenv(path)
+    Last_fm = os.getenv('API_KEY_Last_fm')
+    OauthID = os.getenv("client_id")
+    OauthSecret = os.getenv("client_secret")
+    
+    if not Last_fm:
+        Last_fm = AddEnvVar(path,'API_KEY_Last_fm')
+    
+
+    if Ouath:
+        if not OauthID:
+            OauthID = AddEnvVar(path,'client_id')
+        if not OauthSecret:
+            OauthSecret = AddEnvVar(path,'client_secret')
+
+    return Last_fm, OauthID, OauthSecret
 
 def check_and_update_package(package_name):
     try:
@@ -147,13 +192,10 @@ def GetCookies():
         print("Saved headers manually to browser.json")
         return json.dumps(headers)
 
-
-
 def SortPlaylist(playlist):
     sortedTracks = sorted(playlist["tracks"],
                           key=lambda d: d['title'].casefold(),)
     return sortedTracks
-
 
 def CharacterTransform(Char):
     while ord(Char) < 65 or ord(Char) > 122:
@@ -163,11 +205,11 @@ def CharacterTransform(Char):
             Char = chr(ord(Char)+24)
     return (Char)
 
-
-def EscolhaUsuario():
-    if not sys.argv == []:
+def EscolhaUsuario(option = None):
+    # if not sys.argv == []:
+    if len(sys.argv) > 1:
         option = int(sys.argv[1])
-    else:
+    elif not option:
         option = int(input(
             "From which playlist. Options:\n1-From liked songs\n2-playlist ID\nChoice: "))
     if option == 1:
@@ -183,9 +225,7 @@ def EscolhaUsuario():
         exit()
     return (playlist)
 
-
-def organizaPlaylist():
-    playlist = EscolhaUsuario()
+def organizaPlaylist(playlist,Name = "-A/Z",Description = f" Organized alphabetically at: {time.ctime()}"):
     for n, track in enumerate(playlist["tracks"]):
         TrackLowered = str(track["title"][0]).lower()
         if ord(track["title"][0]) < 65 or ord(track["title"][0]) > 122:
@@ -217,7 +257,7 @@ def organizaPlaylist():
         if len(musicsOldPlaylist) > tamanho:
             while len(musicsOldPlaylist) > tamanho:
                 try:
-                    aa = ytmusic.remove_playlist_items(
+                    ytmusic.remove_playlist_items(
                         OldPlaylist, musicsOldPlaylist[0:tamanho])
                     musicsOldPlaylist = YTMusic.get_playlist(
                         ytmusic, OldPlaylist, limit=None)['tracks']
@@ -242,11 +282,11 @@ def organizaPlaylist():
             f"{playlist['title']} Organized alphabetically at: {time.ctime()}"))
     else:
         playlistId = ytmusic.create_playlist(
-            f"{playlist['title']}-A/Z", 
-            f"{playlist['title']} Organized alphabetically at: {time.ctime()}", 
+            f"{playlist['title']} {Name}", 
+            f"{playlist['title']} {Description}", 
             video_ids=filteredIds)
-        new_playlist = YTMusic.get_playlist(ytmusic, playlistId, None)
-
+        #time.sleep(5)
+        #new_playlist = YTMusic.get_playlist(ytmusic, playlistId, limit=None)
 
 def showUnliked():
     playlist = EscolhaUsuario()
@@ -256,25 +296,42 @@ def showUnliked():
     for name in filteredNames:
         print(name)
 
-
-def addSongName():
-    musicas = []
+def getSongs():
     nome_musica = []
     while True:
-        user = input('Name of song or STOP# to stop: ')
+        user = input('Name of song or multiple at a time separating with ; or STOP# to stop: ')
         if user.upper() == "STOP#":
-            break
+            return nome_musica
+        elif user.count(";") >= 1:
+            musics = user.split(";")
+            nome_musica.extend(musics)
         else:
             nome_musica.append(user)
-    for name in nome_musica:
-        a = YTMusic.search(ytmusic, name, 'songs', limit=1)
-        musicas.append(a[0])
-    sortedTracks = sortedTracks = SortPlaylist(musicas)
+
+def addSongName(title, nome_musica):
+    answer = "N"
+    if autenticated:
+        answer = input("do you want to check if songs are liked (it adds preference when searching) [Y]/N: ")
+        Liked = answer.upper()=="Y"
+    playlist = {"tracks":[]}
+    print("Searching for songs:")
+    for name in tqdm(nome_musica):
+        music = YTMusic.search(ytmusic, name, 'songs')
+        if Liked:
+            for i, mu in enumerate(music):
+                if mu["inLibrary"]:
+                    playlist["tracks"].append({"videoId":mu['videoId'] ,'title':mu['title']})
+                    break
+                elif i > 10:
+                    playlist["tracks"].append({"videoId":music[0]['videoId'] ,'title':music[0]['title']})
+                    break
+        else:
+            playlist["tracks"].append({"videoId":music[0]['videoId'] ,'title':music[0]['title']})
+    sortedTracks = SortPlaylist(playlist)
     filtered = list((d['videoId']) for d in sortedTracks)
     filteredIds = list(dict.fromkeys(filtered))
     playlistId = ytmusic.create_playlist(
-        "added songs", "added songs organized alphabetically", video_ids=filteredIds)
-
+        title, "added songs organized alphabetically", video_ids=filteredIds)
 
 def likeMusicas():
     playlist = EscolhaUsuario()
@@ -285,7 +342,6 @@ def likeMusicas():
     # filteredIds=list(dict.fromkeys(filtered))
     for id in filteredIds:
         a = YTMusic.rate_song(ytmusic, id, 'LIKE')
-
 
 def removeClones():
     remove = []
@@ -302,66 +358,167 @@ def removeClones():
     else:
         YTMusic.remove_playlist_items(ytmusic, playlist['id'], remove)
 
-
-if Ouath:
-    if not os.path.exists(DirConfig):
-        os.makedirs(BASE_DIR)
-        client_id = input("input your client id: ")
-        client_secret = input("input your client secret: ")
-        Config = {"client_id": client_id, "client_secret": client_secret}
-        with open(DirConfig, mode="w", encoding="utf-8") as write_file:
-            json.dump(Config, write_file, indent=4)
-
-    with open(DirConfig, mode="r", encoding="utf-8") as read_file:
-        info = json.load(read_file)
-
-    try:
-        # ytmusic = YTMusic(path+"oauth.json",requests_session=s)
-        ytmusic = YTMusic(PathBase + "oauth.json", oauth_credentials=OAuthCredentials(
-            client_id=info["client_id"], client_secret=info["client_secret"]), requests_session=s)
-    except Exception:
-        print('no oauth.json, run "ytmusicapi oauth" in CMD to create it')
-else:
-    tryToFix = True
-    while tryToFix:
+def autenticate(OauthID, OauthSecret):
+    if Ouath:
         try:
-            ytmusic = YTMusic(PathBase+"browser.json", requests_session=s)
-            tryToFix = False  # Success, exit the loop
-        except Exception as e:
-            print(f"Error loading browser.json: {e}")
-            answ = input("Invalid Cookies, to fix Paste Headers[1], open browser[2] or quit[3]. ([1]/[2]/[3]): ")
-            if answ == "3":
-                print("Please follow: https://ytmusicapi.readthedocs.io/en/stable/setup/browser.html")
-                exit()
-            elif answ == "2":
-                GetCookies()
-                # After getting cookies, try again
-                continue
-            else:
-                try:
-                    setup(PathBase+"browser.json")
-                    print("Headers saved, trying to initialize...")
-                    continue  # Try again with new headers
-                except Exception as E:
-                    print(f"Setup failed: {E}")
+            # ytmusic = YTMusic(path+"oauth.json",requests_session=s)
+            yt = YTMusic(PathBase + "oauth.json", oauth_credentials=OAuthCredentials(
+                client_id=OauthID, client_secret=OauthSecret), requests_session=s)
+        except Exception:
+            print('no oauth.json, run "ytmusicapi oauth" in CMD to create it')
+    else:
+        tryToFix = True
+        while tryToFix:
+            try:
+                yt = YTMusic(PathBase+"browser.json", requests_session=s)
+                tryToFix = False  # Success, exit the loop
+            except Exception as e:
+                print(f"Error loading browser.json: {e}")
+                answ = input("Invalid Cookies, to fix Paste Headers[1], open browser[2], quit[3] or continue[4]. ([1]/[2]/[3]/[4]): ")
+                if answ == "3":
+                    print("Please follow: https://ytmusicapi.readthedocs.io/en/stable/setup/browser.html")
+                    exit()
+                elif answ == "2":
+                    GetCookies()
+                    # After getting cookies, try again
                     continue
+                elif answ == "1":
+                    try:
+                        setup(PathBase+"browser.json")
+                        print("Headers saved, trying to initialize...")
+                        continue  # Try again with new headers
+                    except Exception as E:
+                        print(f"Setup failed: {E}")
+                        continue
+                else:
+                    yt = YTMusic()
+                    return yt, False
+
+    return yt, True
+
+def get_genre_lastfm(album,artist, title):
+        
+    url = "https://ws.audioscrobbler.com/2.0/"
+    parameters = [
+        {"method": "track.getTopTags", "artist": artist, "track": title, "api_key": API_KEY_Last_fm, "format": "json"},
+        {"method": "album.getTopTags", "artist": artist, "album": album, "api_key": API_KEY_Last_fm, "format": "json"},
+        {"method": "artist.getTopTags", "artist": artist, "api_key": API_KEY_Last_fm, "format": "json"}]
+    if not album:
+        parameters.pop(1)
+    tags = []
+    for params in parameters:
+        r = requests.get(url, params=params)
+        if r.status_code == 404:
+            print(f"error 404 on track {title}")
+        tags += ( r.json().get("toptags", {}).get("tag", []))
+        
+    if tags:
+        seen = set()
+        tags = [d for d in tags if d["name"] not in seen and not seen.add(d["name"])]
+        tagsOrig = tags
+        for n, tag in enumerate(tags.copy()):
+            tagList = tag["name"].split()
+            if "brazilian" in tagList:
+                tags.append({"name": "brazil"})
+            if "funk" in tagList or "Funk" in tagList:
+                if not tag["name"] == "funk":
+                    tags.append({"name": "funk"})
+
+            """ if len(tagList) > 1:
+                for t in tagList:
+                    if not t.lower() == "music":
+                        tags.append({"name": t}) """
+        seen = set()
+        tags = [d for d in tags if d["name"] not in seen and not seen.add(d["name"])]
+        tags = tags[:_Searches_]
+        return [t["name"] for t in tags]  # top 3 genres
+        
+    print("no tags found")
+    return []
+
+def load_cache():
+    return json.load(open(CACHE_FILE, encoding="utf-8")) if os.path.exists(CACHE_FILE) else {}
+
+def save_cache(cache):
+    json.dump(cache, open(CACHE_FILE, "w", encoding="utf-8"), indent=2)
+
+def get_genre_cached(album,artist, title):
+    cache = load_cache()
+    key = f"{artist}|{title}".lower()
+    if key not in cache or len(cache[key]) < _Searches_:
+        cache[key] = get_genre_lastfm(album,artist, title)
+        save_cache(cache)
+    return cache[key]
+
+def SortByGenre():
+    if not os.path.exists(BASE_DIR):
+        os.makedirs(BASE_DIR)
+
+    playlist = EscolhaUsuario()
+    ALLGenres = []
+    tracks = playlist['tracks']
+
+    for n, track in enumerate(tracks):
+        artist = track['artists'][0]["name"]
+        if track['album']:
+            album = track['album']['name']
+        else:
+            album = ""
+        SongGenre = get_genre_cached(album,artist,track['title'])
+        print(f"Track: {track['title']}\nGenre: {SongGenre}")
+        ALLGenres += SongGenre
+        playlist['tracks'][n] = track | {"Genres": SongGenre}
+    ALLGenres = list(set(ALLGenres))
+    print(sorted(ALLGenres,key=lambda d: d.casefold()))
+    choice = input("Chose one or more genres separating the names with a ',': ")
+    choiceList = choice.split(",")
+    playlist['tracks'] = [
+        track for track in playlist['tracks']
+        if any(genre in choiceList for genre in track.get('Genres', []))
+        ]
+    organizaPlaylist(playlist,Name=str(choice))
+
+def makePlaylistByM3U():
+    FilePath = input("input m3u path: ").strip("'").strip('"')
+    title = FilePath[FilePath.rfind(os.sep) + 1 : FilePath.rfind(".")]
+    with open(FilePath,"r",encoding="utf-8") as file:
+        content = file.read()
+    fullMusicNames = content.splitlines()
+    musicNames = []
+    for musicPath in fullMusicNames:
+        music = musicPath[musicPath.rfind(os.sep) + 1 : musicPath.rfind(".")]
+        musicNames.append(music)
+    print(musicNames)
+    addSongName(title, musicNames)
 
 
 if __name__ == "__main__":
-    try:
-        if sys.argv[0].endswith(".py"):
-            sys.argv.pop(0)
+    API_KEY_Last_fm, OauthID, OauthSecret = loadVars()
 
+    ytmusic, autenticated = autenticate(OauthID, OauthSecret)
+
+    if sys.argv[0].endswith(".py"):
+        sys.argv.pop(0)
+
+        
         if sys.argv == []:
-            a = (input("OPTIONS:\nsort playlist alphabetically(1)\nlike all the musics in a playlist(2)\nRemove clones(3)\nShow unliked(4)\nAdd songs by name(5)" \
-            "\nUpdade Package(6)\nChoice: "))
+            a = (input("OPTIONS:\nsort playlist alphabetically(1)" \
+            "\nlike all the musics in a playlist(2)" \
+            "\nRemove clones(3)" \
+            "\nShow unliked(4)" \
+            "\nAdd songs by name(5)" \
+            "\nSort songs by genre(6)" \
+            "\nMake playlist by M3U file(7)" \
+            "\nUpdade Package(U)" \
+            "\nRemove Browser.json(R)" \
+            "\nChoice: ")).upper()
         else:
             a = sys.argv[0]
-
+            
         match a:
             case '1':
                 print("Organizing Playlist")
-                organizaPlaylist()
+                organizaPlaylist(EscolhaUsuario())
             case '2':
                 print("Liking Songs")
                 likeMusicas()
@@ -371,11 +528,14 @@ if __name__ == "__main__":
             case '4':
                 showUnliked()
             case '5':
-                addSongName()
+                title = input("Input a title to the playlist: ")
+                addSongName(title, getSongs())
             case '6':
+                SortByGenre()
+            case '7':
+                makePlaylistByM3U()
+            case "R":
+                os.remove(PathBase+"browser.json")
+            case 'U':
                 check_and_update_package("ytmusicapi")
         print("done")
-    except Exception.with_traceback(Exception) as e:
-        print(e)
-        input("program Crashed, Press enter to exit")
-        
